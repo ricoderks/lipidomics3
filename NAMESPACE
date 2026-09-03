@@ -87,9 +87,13 @@ importFrom(plotly,
   add_markers,
   add_segments,
   config,
+  event_data,
+  event_register,
   layout,
   plot_ly,
   plotlyOutput,
+  plotlyProxy,
+  plotlyProxyInvoke,
   renderPlotly
 )
 importFrom(readxl,
@@ -132,6 +136,7 @@ importFrom(shiny,
   updateSelectInput,
   withProgress
 )
+importFrom(stats,median)
 importFrom(tools,
   file_ext,
   file_path_sans_ext

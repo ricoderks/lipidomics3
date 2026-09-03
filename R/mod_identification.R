@@ -120,6 +120,34 @@ mod_identification_ui <- function(id) {
             min = 1,
             step = 1
           )
+        ),
+        bslib::accordion_panel(
+          title = "Peak map",
+          value = "peak_map",
+          icon = bsicons::bs_icon("grid-3x3"),
+          shiny::selectInput(
+            inputId = ns("map_colour"),
+            label = "Colour the peaks by",
+            choices = c(
+              "Best score" = "best_score",
+              "Number of hits" = "n_hits",
+              "Number of lipids" = "n_lipids",
+              "Number of lipid classes" = "n_classes",
+              "Number of MS/MS spectra" = "n_spectra"
+            ),
+            selected = "n_lipids"
+          ),
+          shiny::checkboxInput(
+            inputId = ns("group_table"),
+            label = "Group the table by peak",
+            value = TRUE
+          ),
+          shiny::actionButton(
+            inputId = ns("show_all"),
+            label = "Show all peaks",
+            icon = shiny::icon("arrows-left-right-to-line"),
+            width = "100%"
+          )
         )
       ),
       shiny::actionButton(
@@ -130,8 +158,9 @@ mod_identification_ui <- function(id) {
         width = "100%"
       ),
       shiny::helpText(
-        "Select a row in the table to compare the query spectrum with the",
-        "reference spectrum."
+        "Click a peak in the map to limit the table to the hits of that peak,",
+        "and double click the map to show all peaks again. Select a row in the",
+        "table to compare the query spectrum with the reference spectrum."
       )
     ),
     bslib::layout_column_wrap(
@@ -159,8 +188,14 @@ mod_identification_ui <- function(id) {
     shiny::uiOutput(outputId = ns("messages")),
     bslib::card(
       full_screen = TRUE,
+      height = 420,
+      bslib::card_header("Map of the peaks with a hit"),
+      plotly::plotlyOutput(outputId = ns("peak_map"), height = "100%")
+    ),
+    bslib::card(
+      full_screen = TRUE,
       height = 460,
-      bslib::card_header("Hits"),
+      bslib::card_header(shiny::textOutput(outputId = ns("table_header"))),
       DT::DTOutput(outputId = ns("table"))
     ),
     bslib::card(
@@ -185,9 +220,9 @@ mod_identification_ui <- function(id) {
 #'
 #' @returns Nothing, the module is called for its side effects.
 #'
-#' @importFrom shiny moduleServer reactiveValues observeEvent req renderText
-#'   renderUI showNotification withProgress setProgress
-#' @importFrom plotly renderPlotly
+#' @importFrom shiny moduleServer reactiveValues reactive observeEvent req
+#'   renderText renderUI showNotification withProgress setProgress
+#' @importFrom plotly renderPlotly event_data plotlyProxy plotlyProxyInvoke
 #' @importFrom htmltools tags
 #' @importFrom DT renderDT datatable
 #' @importFrom DBI dbDisconnect
@@ -197,13 +232,15 @@ mod_identification_server <- function(id, r) {
     local_r <- shiny::reactiveValues(
       matches = NULL,
       db_info = NULL,
-      elapsed = NULL
+      elapsed = NULL,
+      selected_peak = NULL
     )
 
     # New MS/MS spectra invalidate the hits that were found before.
     shiny::observeEvent(r$ms2_spectra, {
       local_r$matches <- NULL
       local_r$elapsed <- NULL
+      local_r$selected_peak <- NULL
     }, ignoreNULL = FALSE)
 
     shiny::observeEvent(input$start, {
@@ -259,6 +296,7 @@ mod_identification_server <- function(id, r) {
         shiny::req(matches)
 
         local_r$matches <- matches
+        local_r$selected_peak <- NULL
         local_r$elapsed <- as.numeric(
           difftime(Sys.time(), started, units = "secs")
         )
@@ -338,16 +376,145 @@ mod_identification_server <- function(id, r) {
       )
     })
 
-    output$table <- DT::renderDT({
+    # One row per chromatographic peak, which is what the map draws.
+    peak_summary <- shiny::reactive({
+      peak_match_summary(
+        matches = local_r$matches,
+        score_column = input$rank_by
+      )
+    })
+
+    # The hits that the table shows: all of them, or those of the peak that was
+    # clicked in the map.
+    table_data <- shiny::reactive({
       shiny::req(local_r$matches)
 
+      hits <- local_r$matches
+
+      if (!is.null(local_r$selected_peak)) {
+        hits <- hits[hits$peak_id %in% local_r$selected_peak, , drop = FALSE]
+      }
+
+      if (isTRUE(input$group_table)) {
+        hits <- group_matches_by_peak(
+          matches = hits,
+          score_column = input$rank_by
+        )
+      }
+
+      hits
+    })
+
+    output$peak_map <- plotly::renderPlotly({
+      shiny::req(nrow(peak_summary()) > 0)
+
+      plot_peak_map(
+        peaks = peak_summary(),
+        colour_by = input$map_colour,
+        colour_label = map_colour_label(input$map_colour),
+        # The selection is only read when the map is drawn again for another
+        # reason, since selecting a peak is handled by the proxy below.
+        selected = shiny::isolate(local_r$selected_peak),
+        source = session$ns("peak_map")
+      )
+    })
+
+    # Clicking a dot selects that peak, double clicking clears the selection.
+    # The events are only read once the map is there, since `{plotly}` warns
+    # about the source of a plot that has not been drawn yet.
+    shiny::observeEvent(
+      {
+        shiny::req(local_r$matches)
+        plotly::event_data("plotly_click", source = session$ns("peak_map"))
+      },
+      {
+        clicked <- plotly::event_data(
+          event = "plotly_click",
+          source = session$ns("peak_map")
+        )
+
+        local_r$selected_peak <- as.character(clicked$customdata)
+      }
+    )
+
+    shiny::observeEvent(
+      {
+        shiny::req(local_r$matches)
+        plotly::event_data(
+          event = "plotly_doubleclick",
+          source = session$ns("peak_map")
+        )
+      },
+      {
+        local_r$selected_peak <- NULL
+      }
+    )
+
+    shiny::observeEvent(input$show_all, {
+      local_r$selected_peak <- NULL
+    })
+
+    # Mark the selected peak through a proxy, so that the zoom of the map
+    # survives the selection.
+    shiny::observeEvent(local_r$selected_peak, {
+      peaks <- peak_summary()
+      marked <- peaks[peaks$peak_id %in% local_r$selected_peak, , drop = FALSE]
+
+      plotly::plotlyProxyInvoke(
+        p = plotly::plotlyProxy(outputId = "peak_map", session = session),
+        method = "restyle",
+        # The coordinates have to stay arrays in the message that is sent to
+        # the browser, also when a single peak is selected, since `plotly.js`
+        # ignores a trace whose x is a number instead of an array.
+        list(
+          x = list(I(if (nrow(marked) > 0) marked$peak_rt else 0)),
+          y = list(I(if (nrow(marked) > 0) marked$peak_mz else 0)),
+          visible = nrow(marked) > 0
+        ),
+        list(1L)
+      )
+    }, ignoreNULL = FALSE)
+
+    output$table_header <- shiny::renderText({
+      if (is.null(local_r$matches)) {
+        return("Hits")
+      }
+
+      if (is.null(local_r$selected_peak)) {
+        return(sprintf("Hits, all %d peaks", nrow(peak_summary())))
+      }
+
+      sprintf(
+        "Hits of peak %s",
+        paste(local_r$selected_peak, collapse = ", ")
+      )
+    })
+
+    output$table <- DT::renderDT({
+      shiny::req(table_data())
+
+      grouped <- isTRUE(input$group_table)
+
       DT::datatable(
-        data = local_r$matches,
+        data = table_data(),
         rownames = FALSE,
         filter = "top",
         selection = "single",
         fillContainer = TRUE,
-        options = list(pageLength = 15, scrollX = TRUE, dom = "tip")
+        extensions = if (grouped) "RowGroup" else character(0),
+        options = c(
+          list(pageLength = 15, scrollX = TRUE, dom = "tip"),
+          if (grouped) {
+            list(
+              rowGroup = list(dataSrc = 1L),
+              columnDefs = list(
+                list(visible = FALSE, targets = c(0L, 1L))
+              ),
+              order = list(list(0L, "asc")),
+              orderFixed = list(list(0L, "asc"))
+            )
+          }
+        )
       )
     })
 
@@ -358,7 +525,7 @@ mod_identification_server <- function(id, r) {
         input$table_rows_selected
       )
 
-      hit <- local_r$matches[input$table_rows_selected, , drop = FALSE]
+      hit <- table_data()[input$table_rows_selected, , drop = FALSE]
 
       con <- lipid_db_connect(path = input$db_path)
       on.exit(DBI::dbDisconnect(con), add = TRUE)

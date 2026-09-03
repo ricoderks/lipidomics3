@@ -318,6 +318,28 @@ match_spectrum <- function(query,
 }
 
 
+#' Read one value from the table of spectra
+#'
+#' Reads a single value from the table with the information on the extracted
+#' MS/MS spectra, and returns `NA` when the column is not there. The columns of
+#' that table depend on the spectra variables that the raw files provide.
+#'
+#' @param spectra_info A `data.frame` as created by [ms2_spectra_table()].
+#' @param column Character(1), the name of the column.
+#' @param i Integer(1), the row to read.
+#'
+#' @returns The value of the column, or `NA` when the column is missing.
+#'
+#' @noRd
+spectra_info_column <- function(spectra_info, column, i) {
+  if (!column %in% colnames(spectra_info)) {
+    return(NA_real_)
+  }
+
+  spectra_info[[column]][i]
+}
+
+
 #' Match the extracted MS/MS spectra against the lipid database
 #'
 #' Looks up, for every extracted MS/MS spectrum, the reference spectra with a
@@ -416,6 +438,8 @@ match_ms2_spectra <- function(sps,
         sample_name = spectra_info$sample_name[i],
         precursor_mz = spectra_info$precursor_mz[i],
         rt = spectra_info$rt[i],
+        peak_mz = spectra_info_column(spectra_info, "peak_mz", i),
+        peak_rt = spectra_info_column(spectra_info, "peak_rt", i),
         stringsAsFactors = FALSE
       ),
       hit
@@ -453,6 +477,8 @@ empty_match_table <- function() {
     sample_name = character(0),
     precursor_mz = numeric(0),
     rt = numeric(0),
+    peak_mz = numeric(0),
+    peak_rt = numeric(0),
     library_id = integer(0),
     name = character(0),
     lipid_class = character(0),

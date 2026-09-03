@@ -29,6 +29,7 @@ Imports:
     RSQLite,
     shiny,
     Spectra,
+    stats,
     tools,
     utils,
     xcms
