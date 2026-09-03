@@ -1,0 +1,25 @@
+Package: lipidomics3
+Title: Untargeted lipidomics analysis platform
+Version: 0.0.0.9000
+Authors@R: c(
+    person("Rico", "Derks", , "r.j.e.derks@lumc.nl", role = c("aut", "cre"),
+           comment = c(ORCID = "0000-0002-6363-0857")),
+    person("Yassene", "Mohammed", , "y.mohammed@lumc.nl", role = "aut",
+           comment = c(ORCID = "0000-0003-3265-3332"))
+  )
+Description: Untargeted lipidomics analysis, i.e. lipid identification.
+License: AGPL (>= 3)
+URL: https://github.com/ricoderks/lipidomics3
+BugReports: https://github.com/ricoderks/lipidomics3/issues
+Imports: 
+    config,
+    golem,
+    shiny
+Suggests: 
+    htmltools,
+    spelling,
+    testthat (>= 3.0.0)
+Config/roxygen2/version: 8.1.0
+Config/testthat/edition: 3
+Encoding: UTF-8
+LazyData: true
