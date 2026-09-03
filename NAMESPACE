@@ -2,6 +2,63 @@
 
 export(run_app)
 import(shiny)
+importFrom(BiocParallel,
+  MulticoreParam,
+  SerialParam,
+  SnowParam,
+  bpparam
+)
+importFrom(DT,
+  DTOutput,
+  datatable,
+  renderDT
+)
+importFrom(MsExperiment,
+  readMsExperiment,
+  sampleData,
+  spectra
+)
+importFrom(Spectra,
+  dataOrigin,
+  filterMsLevel,
+  intensity,
+  msLevel,
+  peaksData,
+  rtime,
+  spectraData,
+  spectraVariables,
+  tic
+)
+importFrom(bsicons,bs_icon)
+importFrom(bslib,
+  accordion,
+  accordion_panel,
+  bs_theme,
+  card,
+  card_body,
+  card_header,
+  layout_column_wrap,
+  layout_sidebar,
+  nav_panel,
+  page_navbar,
+  sidebar,
+  value_box
+)
+importFrom(ggplot2,
+  aes,
+  element_text,
+  expansion,
+  geom_line,
+  geom_point,
+  geom_segment,
+  geom_text,
+  ggplot,
+  labs,
+  scale_size_continuous,
+  scale_y_continuous,
+  theme,
+  theme_bw
+)
 importFrom(golem,
   activate_js,
   add_resource_path,
@@ -9,11 +66,62 @@ importFrom(golem,
   favicon,
   with_golem_options
 )
-importFrom(shiny,
-  HTML,
-  column,
-  shinyApp,
-  tagAppendAttributes,
+importFrom(htmltools,
   tagList,
   tags
+)
+importFrom(readxl,
+  excel_sheets,
+  read_excel
+)
+importFrom(rlang,.data)
+importFrom(shiny,
+  HTML,
+  NS,
+  actionButton,
+  checkboxInput,
+  column,
+  fileInput,
+  helpText,
+  icon,
+  incProgress,
+  moduleServer,
+  numericInput,
+  observe,
+  observeEvent,
+  plotOutput,
+  radioButtons,
+  reactive,
+  reactiveValues,
+  renderPlot,
+  renderText,
+  renderUI,
+  req,
+  selectInput,
+  shinyApp,
+  showNotification,
+  tagAppendAttributes,
+  tagList,
+  tags,
+  textOutput,
+  uiOutput,
+  updateSelectInput,
+  withProgress
+)
+importFrom(tools,
+  file_ext,
+  file_path_sans_ext
+)
+importFrom(utils,
+  packageVersion,
+  read.delim
+)
+importFrom(xcms,
+  CentWaveParam,
+  MergeNeighboringPeaksParam,
+  chromPeakSpectra,
+  chromPeaks,
+  chromatogram,
+  findChromPeaks,
+  refineChromPeaks
 )

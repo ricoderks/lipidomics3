@@ -36,6 +36,12 @@ expression in order for the match to be considered successful.}
 \item{...}{arguments to pass to golem_opts.
 See `?golem::get_golem_options` for more details.}
 }
+\value{
+An object that represents the application, see [shiny::shinyApp()].
+}
 \description{
-Run the Shiny Application
+Starts the lipidomics3 application. The maximum size of the files that can
+be uploaded is taken from the `max_upload_size_mb` entry of the golem
+configuration file, because mzML files are much larger than the Shiny
+default of 5 MB.
 }
