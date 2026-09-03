@@ -171,6 +171,10 @@ mod_ms2_server <- function(id, r) {
         shiny::incProgress(amount = 0.8, message = "Collecting the spectra")
 
         r$ms2_spectra <- spectra
+
+        # The hits belong to the previous set of MS/MS spectra.
+        r$matches <- NULL
+
         local_r$table <- ms2_spectra_table(sps = spectra, x = r$xcms_data)
         local_r$coverage <- ms2_coverage(sps = spectra, x = r$xcms_data)
       })

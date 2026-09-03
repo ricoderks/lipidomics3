@@ -4,6 +4,9 @@ default:
   app_prod: no
   # mzML files are large, so the Shiny default of 5 MB is far too small.
   max_upload_size_mb: 8192
+  # Path of the SQLite database with the reference MS/MS spectra,
+  # relative to the working directory the application is started from.
+  lipid_db: DB/lipids.sqlite
 production:
   app_prod: yes
 dev:

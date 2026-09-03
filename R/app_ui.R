@@ -39,6 +39,11 @@ app_ui <- function(request) {
         title = "MS/MS spectra",
         icon = bsicons::bs_icon("soundwave"),
         mod_ms2_ui("ms2_1")
+      ),
+      bslib::nav_panel(
+        title = "Identification",
+        icon = bsicons::bs_icon("search"),
+        mod_identification_ui("identification_1")
       )
     )
   )
