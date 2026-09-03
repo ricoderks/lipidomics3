@@ -164,15 +164,87 @@ test_that("empty_match_table() has the columns of a real hit table", {
   )
 })
 
-test_that("plot_mirror_spectrum() plots the reference downwards", {
+test_that("mirror_spectrum_data() puts the reference below the axis", {
   query <- peaks(c(100, 200), c(100, 50))
   reference <- peaks(c(100, 200), c(50, 100))
 
-  plot <- plot_mirror_spectrum(query, reference, tolerance = 0.01, ppm = 0)
+  plot_data <- mirror_spectrum_data(query, reference, tolerance = 0.01, ppm = 0)
 
-  expect_s3_class(plot, "ggplot")
-  expect_true(any(plot$data$intensity < 0))
-  expect_true(any(plot$data$intensity > 0))
+  expect_equal(nrow(plot_data), 4)
+  expect_true(all(plot_data$intensity[plot_data$spectrum == "query"] > 0))
+  expect_true(all(plot_data$intensity[plot_data$spectrum == "reference"] < 0))
+  expect_true(all(plot_data$matched))
+})
+
+test_that("mirror_spectrum_data() scales both spectra to their base peak", {
+  query <- peaks(c(100, 200), c(20, 10))
+  reference <- peaks(c(100, 200), c(4000, 1000))
+
+  plot_data <- mirror_spectrum_data(query, reference, tolerance = 0.01, ppm = 0)
+
+  expect_equal(plot_data$intensity[plot_data$spectrum == "query"], c(100, 50))
+  expect_equal(plot_data$intensity[plot_data$spectrum == "reference"], c(-100, -25))
+})
+
+test_that("mirror_spectrum_data() marks the peaks that only one spectrum has", {
+  query <- peaks(c(100, 300), c(100, 50))
+  reference <- peaks(100, 100)
+
+  plot_data <- mirror_spectrum_data(query, reference, tolerance = 0.01, ppm = 0)
+
+  # two query peaks and one reference peak, the peak at 300 is unmatched
+  expect_equal(nrow(plot_data), 3)
+  expect_equal(sum(!plot_data$matched), 1)
+  expect_equal(plot_data$mz[!plot_data$matched], 300)
+})
+
+test_that("mirror_spectrum_data() removes the precursor from both spectra", {
+  query <- peaks(c(100, 800), c(50, 100))
+  reference <- peaks(c(100, 800), c(50, 100))
+
+  plot_data <- mirror_spectrum_data(
+    query, reference,
+    tolerance = 0.01, ppm = 0, precursor_mz = 800
+  )
+
+  expect_equal(unique(plot_data$mz), 100)
+})
+
+test_that("mirror_spectrum_data() copes with an empty spectrum", {
+  plot_data <- mirror_spectrum_data(
+    peaks(numeric(0), numeric(0)),
+    peaks(100, 10)
+  )
+
+  expect_s3_class(plot_data, "data.frame")
+  expect_equal(nrow(plot_data), 0)
+})
+
+test_that("plot_mirror_spectrum() returns an interactive plot", {
+  query <- peaks(c(100, 200), c(100, 50))
+  reference <- peaks(c(100, 300), c(50, 100))
+
+  plot <- plot_mirror_spectrum(
+    query, reference,
+    tolerance = 0.01, ppm = 0,
+    title = "PC 16:0_18:1", subtitle = "dot 0.500"
+  )
+
+  expect_s3_class(plot, "plotly")
+
+  built <- plotly::plotly_build(plot)
+  # one segment trace and one hover marker trace for matched and unmatched
+  expect_equal(length(built$x$data), 4)
+  expect_true(any(grepl("PC 16:0_18:1", built$x$layout$title$text, fixed = TRUE)))
+})
+
+test_that("plot_mirror_spectrum() survives an empty spectrum", {
+  plot <- plot_mirror_spectrum(
+    peaks(numeric(0), numeric(0)),
+    peaks(numeric(0), numeric(0))
+  )
+
+  expect_s3_class(plot, "plotly")
 })
 
 test_that("drop_precursor_peaks() removes the precursor and the window below it", {

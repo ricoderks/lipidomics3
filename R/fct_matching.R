@@ -469,11 +469,13 @@ empty_match_table <- function() {
 }
 
 
-#' Plot a query spectrum against a reference spectrum
+#' Data for the mirror plot of two spectra
 #'
-#' Plots the query spectrum upwards and the reference spectrum downwards, both
-#' scaled to their most intense peak, so that the two can be compared. The
-#' peaks that the two spectra have in common are coloured.
+#' Prepares the peaks of a query and a reference spectrum for a mirror plot.
+#' Both spectra are scaled to their most intense peak, and the intensities of
+#' the reference spectrum are made negative so that it is drawn downwards. The
+#' same peaks are removed as the scores removed, so that the plot shows what
+#' was scored.
 #'
 #' @param query A `matrix` with the columns `mz` and `intensity` of the query
 #'   spectrum.
@@ -482,28 +484,20 @@ empty_match_table <- function() {
 #' @param tolerance Numeric(1), absolute m/z tolerance for matching two peaks.
 #' @param ppm Numeric(1), relative m/z tolerance for matching two peaks.
 #' @param precursor_mz Numeric(1), the precursor m/z, or `NA` when the
-#'   precursor should be kept. The plot removes the same peaks as the scores
-#'   did, so that the plot shows what was scored.
+#'   precursor should be kept.
 #' @param precursor_window Numeric(1), the window below the precursor m/z that
 #'   is removed together with the precursor.
-#' @param title Character(1), the title of the plot.
-#' @param subtitle Character(1), the subtitle of the plot. Keeping the scores
-#'   out of the title stops a long lipid name from being clipped.
 #'
-#' @returns A `ggplot` object.
+#' @returns A `data.frame` with the columns `mz`, `intensity`, `spectrum` and
+#'   `matched`, with one row per peak of both spectra.
 #'
-#' @importFrom ggplot2 ggplot aes geom_segment geom_hline labs theme_bw
-#'   scale_colour_manual scale_y_continuous
-#' @importFrom rlang .data
 #' @noRd
-plot_mirror_spectrum <- function(query,
+mirror_spectrum_data <- function(query,
                                  reference,
                                  tolerance = 0.01,
                                  ppm = 20,
                                  precursor_mz = NA_real_,
-                                 precursor_window = 1.5,
-                                 title = "",
-                                 subtitle = "") {
+                                 precursor_window = 1.5) {
   query <- drop_precursor_peaks(query, precursor_mz, precursor_window)
   reference <- drop_precursor_peaks(reference, precursor_mz, precursor_window)
 
@@ -525,41 +519,146 @@ plot_mirror_spectrum <- function(query,
     data.frame(
       mz = query_peaks[, 1L],
       intensity = query_peaks[, 2L],
+      spectrum = rep("query", nrow(query_peaks)),
       matched = aligned$matched,
       stringsAsFactors = FALSE
     ),
     data.frame(
       mz = reference_peaks[, 1L],
       intensity = -reference_peaks[, 2L],
+      spectrum = rep("reference", nrow(reference_peaks)),
       matched = aligned$matched,
       stringsAsFactors = FALSE
     )
   )
-  plot_data <- plot_data[!is.na(plot_data$mz), , drop = FALSE]
-  plot_data$matched <- ifelse(plot_data$matched, "matched", "not matched")
 
-  ggplot2::ggplot(
-    data = plot_data,
-    mapping = ggplot2::aes(
-      x = .data$mz,
-      y = .data$intensity,
-      colour = .data$matched
+  plot_data[!is.na(plot_data$mz) & !is.na(plot_data$intensity), , drop = FALSE]
+}
+
+
+#' Plot a query spectrum against a reference spectrum
+#'
+#' Plots the query spectrum upwards and the reference spectrum downwards, both
+#' scaled to their most intense peak, so that the two can be compared. The
+#' peaks that the two spectra have in common are coloured. The plot is
+#' interactive, hovering over a peak shows its m/z and relative intensity.
+#'
+#' @param query A `matrix` with the columns `mz` and `intensity` of the query
+#'   spectrum.
+#' @param reference A `matrix` with the columns `mz` and `intensity` of the
+#'   reference spectrum.
+#' @param tolerance Numeric(1), absolute m/z tolerance for matching two peaks.
+#' @param ppm Numeric(1), relative m/z tolerance for matching two peaks.
+#' @param precursor_mz Numeric(1), the precursor m/z, or `NA` when the
+#'   precursor should be kept. The plot removes the same peaks as the scores
+#'   did, so that the plot shows what was scored.
+#' @param precursor_window Numeric(1), the window below the precursor m/z that
+#'   is removed together with the precursor.
+#' @param title Character(1), the title of the plot.
+#' @param subtitle Character(1), the subtitle of the plot. Keeping the scores
+#'   out of the title stops a long lipid name from being clipped.
+#'
+#' @returns A `plotly` object.
+#'
+#' @importFrom plotly plot_ly add_segments add_markers layout config
+#' @importFrom htmltools htmlEscape
+#' @noRd
+plot_mirror_spectrum <- function(query,
+                                 reference,
+                                 tolerance = 0.01,
+                                 ppm = 20,
+                                 precursor_mz = NA_real_,
+                                 precursor_window = 1.5,
+                                 title = "",
+                                 subtitle = "") {
+  plot_data <- mirror_spectrum_data(
+    query = query,
+    reference = reference,
+    tolerance = tolerance,
+    ppm = ppm,
+    precursor_mz = precursor_mz,
+    precursor_window = precursor_window
+  )
+
+  plot_data$label <- ifelse(plot_data$matched, "matched", "not matched")
+  plot_data$base <- rep(0, nrow(plot_data))
+  plot_data$hover <- sprintf(
+    "%s<br>m/z %.4f<br>intensity %.2f%% of the base peak<br>%s",
+    plot_data$spectrum,
+    plot_data$mz,
+    abs(plot_data$intensity),
+    plot_data$label
+  )
+
+  colours <- c("matched" = "#1b5e7e", "not matched" = "#b0b0b0")
+
+  plot <- plotly::plot_ly()
+
+  for (label in names(colours)) {
+    peaks <- plot_data[plot_data$label == label, , drop = FALSE]
+
+    if (nrow(peaks) == 0) {
+      next
+    }
+
+    plot <- plotly::add_segments(
+      p = plot,
+      data = peaks,
+      x = ~mz,
+      xend = ~mz,
+      y = ~base,
+      yend = ~intensity,
+      line = list(color = unname(colours[label]), width = 1.3),
+      name = label,
+      legendgroup = label,
+      hoverinfo = "none"
     )
-  ) +
-    ggplot2::geom_hline(yintercept = 0, colour = "grey40", linewidth = 0.3) +
-    ggplot2::geom_segment(
-      mapping = ggplot2::aes(xend = .data$mz, yend = 0),
-      linewidth = 0.5
-    ) +
-    ggplot2::scale_colour_manual(
-      values = c("matched" = "#1b5e7e", "not matched" = "#b0b0b0")
-    ) +
-    ggplot2::labs(
-      x = "m/z",
-      y = "Query (up) and reference (down) intensity [%]",
-      colour = NULL,
-      title = title,
-      subtitle = subtitle
-    ) +
-    ggplot2::theme_bw()
+
+    # Segments are only hoverable at their ends, so a transparent marker on
+    # top of every peak carries the tooltip.
+    plot <- plotly::add_markers(
+      p = plot,
+      data = peaks,
+      x = ~mz,
+      y = ~intensity,
+      marker = list(color = unname(colours[label]), size = 8, opacity = 0),
+      name = label,
+      legendgroup = label,
+      showlegend = FALSE,
+      hoverinfo = "text",
+      text = ~hover
+    )
+  }
+
+  heading <- htmltools::htmlEscape(title)
+
+  if (nzchar(subtitle)) {
+    heading <- paste0(
+      heading,
+      "<br><sub>",
+      htmltools::htmlEscape(subtitle),
+      "</sub>"
+    )
+  }
+
+  plot <- plotly::layout(
+    p = plot,
+    title = list(text = heading, x = 0, xanchor = "left", font = list(size = 14)),
+    xaxis = list(title = "m/z", zeroline = FALSE),
+    yaxis = list(
+      title = "Query (up) and reference (down) intensity [%]",
+      zeroline = TRUE,
+      zerolinecolor = "#666666",
+      zerolinewidth = 1
+    ),
+    hovermode = "closest",
+    legend = list(orientation = "h", x = 0, y = -0.18),
+    margin = list(t = 60)
+  )
+
+  plotly::config(
+    p = plot,
+    displaylogo = FALSE,
+    modeBarButtonsToRemove = list("select2d", "lasso2d", "autoScale2d")
+  )
 }

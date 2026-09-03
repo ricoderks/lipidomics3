@@ -8,7 +8,8 @@
 #' @returns A `shiny.tag.list` with the user interface of the module.
 #'
 #' @importFrom shiny NS textInput numericInput selectInput checkboxInput
-#'   actionButton icon uiOutput textOutput plotOutput helpText
+#'   actionButton icon uiOutput textOutput helpText
+#' @importFrom plotly plotlyOutput
 #' @importFrom bslib layout_sidebar sidebar accordion accordion_panel card
 #'   card_header layout_column_wrap value_box
 #' @importFrom bsicons bs_icon
@@ -166,7 +167,7 @@ mod_identification_ui <- function(id) {
       full_screen = TRUE,
       height = 440,
       bslib::card_header("Query against reference spectrum"),
-      shiny::plotOutput(outputId = ns("mirror"), height = "100%")
+      plotly::plotlyOutput(outputId = ns("mirror"), height = "100%")
     )
   )
 }
@@ -185,7 +186,8 @@ mod_identification_ui <- function(id) {
 #' @returns Nothing, the module is called for its side effects.
 #'
 #' @importFrom shiny moduleServer reactiveValues observeEvent req renderText
-#'   renderUI renderPlot showNotification withProgress setProgress
+#'   renderUI showNotification withProgress setProgress
+#' @importFrom plotly renderPlotly
 #' @importFrom htmltools tags
 #' @importFrom DT renderDT datatable
 #' @importFrom DBI dbDisconnect
@@ -349,7 +351,7 @@ mod_identification_server <- function(id, r) {
       )
     })
 
-    output$mirror <- shiny::renderPlot({
+    output$mirror <- plotly::renderPlotly({
       shiny::req(
         r$ms2_spectra,
         local_r$matches,

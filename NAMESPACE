@@ -60,14 +60,12 @@ importFrom(ggplot2,
   aes,
   element_text,
   expansion,
-  geom_hline,
   geom_line,
   geom_point,
   geom_segment,
   geom_text,
   ggplot,
   labs,
-  scale_colour_manual,
   scale_size_continuous,
   scale_y_continuous,
   theme,
@@ -81,8 +79,18 @@ importFrom(golem,
   with_golem_options
 )
 importFrom(htmltools,
+  htmlEscape,
   tagList,
   tags
+)
+importFrom(plotly,
+  add_markers,
+  add_segments,
+  config,
+  layout,
+  plot_ly,
+  plotlyOutput,
+  renderPlotly
 )
 importFrom(readxl,
   excel_sheets,

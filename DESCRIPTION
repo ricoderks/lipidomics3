@@ -23,6 +23,7 @@ Imports:
     htmltools,
     MsCoreUtils,
     MsExperiment,
+    plotly,
     readxl,
     rlang,
     RSQLite,
