@@ -1,3 +1,30 @@
+#' Remove the peaks without a signal
+#'
+#' Removes the entries of a peak list that carry no signal. The mzML files that
+#' `msconvert` writes for the SCIEX data keep a zero intensity point on either
+#' side of every centroid, so two thirds of the peaks of a query spectrum are
+#' empty. Those points sit within the matching tolerance of the centroid they
+#' belong to, and since they are closer to it than half a tolerance they are
+#' matched to a reference peak in its place. The match then contributes a zero
+#' to every score, which is why all scores of a spectrum can be zero while it
+#' has matching fragments.
+#'
+#' @param x A `matrix` with the columns `mz` and `intensity`.
+#'
+#' @returns A `matrix` with the columns `mz` and `intensity`.
+#'
+#' @noRd
+drop_empty_peaks <- function(x) {
+  if (nrow(x) == 0) {
+    return(x)
+  }
+
+  keep <- !is.na(x[, 1L]) & !is.na(x[, 2L]) & x[, 2L] > 0
+
+  x[keep, , drop = FALSE]
+}
+
+
 #' Remove the precursor from a peak list
 #'
 #' Removes the peaks at and above the precursor m/z. Every reference spectrum
@@ -213,8 +240,16 @@ spectrum_scores <- function(query,
                             n = 0.6,
                             precursor_mz = NA_real_,
                             precursor_window = 1.5) {
-  query <- drop_precursor_peaks(query, precursor_mz, precursor_window)
-  reference <- drop_precursor_peaks(reference, precursor_mz, precursor_window)
+  query <- drop_precursor_peaks(
+    x = drop_empty_peaks(query),
+    precursor_mz = precursor_mz,
+    window = precursor_window
+  )
+  reference <- drop_precursor_peaks(
+    x = drop_empty_peaks(reference),
+    precursor_mz = precursor_mz,
+    window = precursor_window
+  )
 
   aligned <- align_peaks(x = query, y = reference, tolerance = tolerance, ppm = ppm)
 
@@ -524,8 +559,16 @@ mirror_spectrum_data <- function(query,
                                  ppm = 20,
                                  precursor_mz = NA_real_,
                                  precursor_window = 1.5) {
-  query <- drop_precursor_peaks(query, precursor_mz, precursor_window)
-  reference <- drop_precursor_peaks(reference, precursor_mz, precursor_window)
+  query <- drop_precursor_peaks(
+    x = drop_empty_peaks(query),
+    precursor_mz = precursor_mz,
+    window = precursor_window
+  )
+  reference <- drop_precursor_peaks(
+    x = drop_empty_peaks(reference),
+    precursor_mz = precursor_mz,
+    window = precursor_window
+  )
 
   aligned <- align_peaks(x = query, y = reference, tolerance = tolerance, ppm = ppm)
 

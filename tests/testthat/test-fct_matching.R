@@ -276,3 +276,55 @@ test_that("removing the precursor stops it from carrying the score", {
   expect_equal(unname(without_precursor["n_matched"]), 0)
   expect_equal(unname(without_precursor["weighted_dot"]), 0)
 })
+
+
+test_that("drop_empty_peaks() removes the peaks without a signal", {
+  peaks <- cbind(
+    mz = c(100.1, 100.2, 100.3, 200.5),
+    intensity = c(0, 50, 0, 10)
+  )
+
+  expect_equal(nrow(drop_empty_peaks(peaks)), 2)
+  expect_equal(drop_empty_peaks(peaks)[, "mz"], c(100.2, 200.5))
+
+  # Missing values are dropped as well, and an empty spectrum survives.
+  expect_equal(
+    nrow(drop_empty_peaks(cbind(mz = c(1, NA), intensity = c(NA, 1)))),
+    0
+  )
+  expect_equal(nrow(drop_empty_peaks(peaks[0, , drop = FALSE])), 0)
+})
+
+
+test_that("the zero intensity points around a centroid do not zero the scores", {
+  # `msconvert` writes a zero intensity point on either side of every centroid.
+  # The left hand one is closer to the reference peak than the centroid itself,
+  # so it used to take the match and every score became zero.
+  query <- cbind(
+    mz = c(649.5149, 649.5199, 649.5249, 891.7477, 891.7527, 891.7577),
+    intensity = c(0, 73, 0, 0, 999, 0)
+  )
+  reference <- cbind(
+    mz = c(649.5166, 891.7412),
+    intensity = c(50, 999)
+  )
+
+  scores <- spectrum_scores(query, reference)
+
+  expect_equal(unname(scores["n_matched"]), 2)
+  expect_gt(scores["dot"], 0.9)
+  expect_gt(scores["weighted_dot"], 0.9)
+  expect_gt(scores["reverse_dot"], 0.9)
+})
+
+
+test_that("the mirror plot leaves out the peaks without a signal", {
+  query <- cbind(mz = c(100.1, 100.2, 100.3), intensity = c(0, 73, 0))
+  reference <- cbind(mz = 100.2, intensity = 50)
+
+  plot_data <- mirror_spectrum_data(query = query, reference = reference)
+
+  expect_equal(nrow(plot_data), 2)
+  expect_equal(plot_data$mz, c(100.2, 100.2))
+  expect_true(all(plot_data$matched))
+})
