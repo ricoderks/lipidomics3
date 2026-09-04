@@ -3,9 +3,11 @@
 export(run_app)
 import(shiny)
 importFrom(BiocParallel,
+  "bpworkers<-",
   MulticoreParam,
   SerialParam,
   SnowParam,
+  bpiterate,
   bpparam
 )
 importFrom(DBI,

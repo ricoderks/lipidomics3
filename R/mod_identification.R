@@ -133,6 +133,13 @@ mod_identification_ui <- function(id) {
           )
         )
       ),
+      shiny::numericInput(
+        inputId = ns("workers"),
+        label = "Number of workers",
+        value = 2,
+        min = 1,
+        step = 1
+      ),
       shiny::actionButton(
         inputId = ns("start"),
         label = "Match against the database",
@@ -247,15 +254,19 @@ mod_identification_server <- function(id, r) {
         )
 
         shiny::req(con)
-        on.exit(DBI::dbDisconnect(con), add = TRUE)
 
         local_r$db_info <- lipid_db_info(con)
+
+        # The search opens the database in every worker, so this connection is
+        # closed first: a forked worker inherits it, and a connection that is
+        # closed in two processes drops the locks of both.
+        DBI::dbDisconnect(con)
 
         matches <- tryCatch(
           expr = match_ms2_spectra(
             sps = r$ms2_spectra,
             spectra_info = ms2_spectra_table(sps = r$ms2_spectra, x = r$xcms_data),
-            con = con,
+            db_path = input$db_path,
             precursor_ppm = input$precursor_ppm,
             tolerance = input$tolerance,
             ppm = input$ppm,
@@ -264,6 +275,7 @@ mod_identification_server <- function(id, r) {
             min_matched = input$min_matched,
             top_n = input$top_n,
             rank_by = input$rank_by,
+            workers = input$workers,
             progress = function(fraction) {
               shiny::setProgress(value = fraction)
             }

@@ -308,3 +308,94 @@ test_that("the mirror plot leaves out the peaks without a signal", {
   expect_equal(plot_data$mz, c(100.2, 100.2))
   expect_true(all(plot_data$matched))
 })
+
+test_that("prepare_peaks() drops the empty peaks and sorts by m/z", {
+  x <- peaks(c(300, 100.5, 200, 150), c(10, 0, 20, 5))
+
+  prepared <- prepare_peaks(x)
+
+  expect_equal(prepared[, "mz"], c(150, 200, 300))
+  expect_equal(prepared[, "intensity"], c(5, 20, 10))
+})
+
+test_that("prepare_peaks() leaves a sorted spectrum alone", {
+  x <- peaks(c(100, 200), c(10, 20))
+
+  expect_equal(prepare_peaks(x), x)
+  expect_equal(nrow(prepare_peaks(peaks(numeric(0), numeric(0)))), 0)
+})
+
+test_that("the scores do not depend on the order of the peaks", {
+  query <- peaks(c(100, 200, 300), c(100, 50, 10))
+  shuffled <- peaks(c(300, 100, 200), c(10, 100, 50))
+  reference <- peaks(c(200, 100), c(50, 100))
+
+  expect_equal(
+    spectrum_scores(query, reference, tolerance = 0.01, ppm = 0),
+    spectrum_scores(shuffled, reference, tolerance = 0.01, ppm = 0)
+  )
+})
+
+test_that("peak_weights() takes the shortcut for the plain dot product", {
+  x <- peaks(c(100, 200), c(10, 40))
+
+  expect_equal(unname(peak_weights(x, m = 0, n = 1)), c(10, 40))
+  expect_equal(unname(peak_weights(x, m = 0, n = 0.5)), c(sqrt(10), sqrt(40)))
+  expect_equal(
+    unname(peak_weights(x, m = 3, n = 0.6)),
+    c(100, 200)^3 * c(10, 40)^0.6
+  )
+})
+
+test_that("the scores of a candidate below the fragment count are not needed", {
+  query <- peaks(c(100, 200, 300), c(100, 50, 10))
+  reference <- peaks(c(100, 999), c(100, 50))
+
+  scores <- spectrum_scores(
+    query, reference,
+    tolerance = 0.01, ppm = 0, min_matched = 2
+  )
+
+  # The single matching fragment is counted, the scores are not calculated.
+  expect_equal(unname(scores["n_matched"]), 1)
+  expect_true(all(is.na(scores[c("dot", "weighted_dot", "reverse_dot")])))
+
+  # Without the short cut the same pair is scored as before.
+  expect_false(
+    is.na(spectrum_scores(query, reference, tolerance = 0.01, ppm = 0)["dot"])
+  )
+})
+
+test_that("match_chunks() deals the spectra out over the chunks", {
+  chunks <- match_chunks(n = 100, workers = 1)
+
+  expect_equal(length(chunks), 20)
+  expect_equal(sort(unlist(chunks)), 1:100)
+  # Round robin, so neighbouring spectra end up in different chunks.
+  expect_equal(chunks[[1]], seq(from = 1, to = 81, by = 20))
+})
+
+test_that("match_chunks() gives every worker several chunks", {
+  expect_equal(length(match_chunks(n = 1000, workers = 8)), 32)
+  expect_equal(length(match_chunks(n = 1000, workers = 26)), 104)
+
+  # Never more chunks than spectra.
+  expect_equal(length(match_chunks(n = 3, workers = 8)), 3)
+  expect_equal(length(match_chunks(n = 1, workers = 4)), 1)
+})
+
+test_that("spectra_chunk() only holds the spectra of its own chunk", {
+  chunk <- spectra_chunk(
+    indices = c(1L, 3L),
+    peaks = list(peaks(100, 10), peaks(200, 20), peaks(300, 30)),
+    precursor = c(500, 600, 700),
+    ion_mode = c("Positive", "Positive", "Negative"),
+    spectra_info = data.frame(spectrum = 1:3, stringsAsFactors = FALSE)
+  )
+
+  expect_equal(length(chunk$peaks), 2)
+  expect_equal(unname(chunk$peaks[[2]][, "mz"]), 300)
+  expect_equal(chunk$precursor, c(500, 700))
+  expect_equal(chunk$ion_mode, c("Positive", "Negative"))
+  expect_equal(chunk$spectra_info$spectrum, c(1L, 3L))
+})
