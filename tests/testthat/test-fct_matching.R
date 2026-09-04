@@ -198,16 +198,14 @@ test_that("mirror_spectrum_data() marks the peaks that only one spectrum has", {
   expect_equal(plot_data$mz[!plot_data$matched], 300)
 })
 
-test_that("mirror_spectrum_data() removes the precursor from both spectra", {
+test_that("mirror_spectrum_data() keeps the precursor of both spectra", {
   query <- peaks(c(100, 800), c(50, 100))
   reference <- peaks(c(100, 800), c(50, 100))
 
-  plot_data <- mirror_spectrum_data(
-    query, reference,
-    tolerance = 0.01, ppm = 0, precursor_mz = 800
-  )
+  plot_data <- mirror_spectrum_data(query, reference, tolerance = 0.01, ppm = 0)
 
-  expect_equal(unique(plot_data$mz), 100)
+  expect_equal(sort(unique(plot_data$mz)), c(100, 800))
+  expect_true(all(plot_data$matched))
 })
 
 test_that("mirror_spectrum_data() copes with an empty spectrum", {
@@ -247,34 +245,16 @@ test_that("plot_mirror_spectrum() survives an empty spectrum", {
   expect_s3_class(plot, "plotly")
 })
 
-test_that("drop_precursor_peaks() removes the precursor and the window below it", {
-  x <- peaks(c(100, 200, 798.9, 800), c(10, 20, 30, 40))
-
-  kept <- drop_precursor_peaks(x, precursor_mz = 800, window = 1.5)
-
-  expect_equal(kept[, "mz"], c(100, 200))
-  expect_equal(nrow(drop_precursor_peaks(x, precursor_mz = NA)), 4)
-  expect_equal(nrow(drop_precursor_peaks(x, precursor_mz = NULL)), 4)
-})
-
-test_that("removing the precursor stops it from carrying the score", {
+test_that("the precursor takes part in the score", {
   # The reference disagrees with the query on every real fragment, they only
-  # share the precursor at m/z 800.
+  # share the precursor at m/z 800, which is scored like any other peak.
   query <- peaks(c(100, 200, 800), c(999, 500, 300))
   reference <- peaks(c(150, 250, 800), c(999, 500, 300))
 
-  with_precursor <- spectrum_scores(
-    query, reference, tolerance = 0.01, ppm = 0, precursor_mz = NA_real_
-  )
-  without_precursor <- spectrum_scores(
-    query, reference, tolerance = 0.01, ppm = 0, precursor_mz = 800
-  )
+  scores <- spectrum_scores(query, reference, tolerance = 0.01, ppm = 0)
 
-  expect_equal(unname(with_precursor["n_matched"]), 1)
-  expect_gt(with_precursor["weighted_dot"], 0.99)
-
-  expect_equal(unname(without_precursor["n_matched"]), 0)
-  expect_equal(unname(without_precursor["weighted_dot"]), 0)
+  expect_equal(unname(scores["n_matched"]), 1)
+  expect_gt(scores["weighted_dot"], 0.99)
 })
 
 

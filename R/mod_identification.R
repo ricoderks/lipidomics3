@@ -66,23 +66,6 @@ mod_identification_ui <- function(id) {
             value = 2,
             min = 1,
             step = 1
-          ),
-          shiny::checkboxInput(
-            inputId = ns("remove_precursor"),
-            label = "Ignore the precursor",
-            value = TRUE
-          ),
-          shiny::numericInput(
-            inputId = ns("precursor_window"),
-            label = "Ignored window below the precursor [Da]",
-            value = 1.5,
-            min = 0,
-            step = 0.5
-          ),
-          shiny::helpText(
-            "Every reference spectrum contains its own precursor, and the",
-            "candidates are selected on their precursor m/z, so that peak",
-            "always matches and flatters the scores."
           )
         ),
         bslib::accordion_panel(
@@ -281,8 +264,6 @@ mod_identification_server <- function(id, r) {
             min_matched = input$min_matched,
             top_n = input$top_n,
             rank_by = input$rank_by,
-            remove_precursor = input$remove_precursor,
-            precursor_window = input$precursor_window,
             progress = function(fraction) {
               shiny::setProgress(value = fraction)
             }
@@ -540,12 +521,6 @@ mod_identification_server <- function(id, r) {
         reference = reference$peaks,
         tolerance = input$tolerance,
         ppm = input$ppm,
-        precursor_mz = if (isTRUE(input$remove_precursor)) {
-          hit$precursor_mz
-        } else {
-          NA_real_
-        },
-        precursor_window = input$precursor_window,
         title = paste(reference$name, reference$adduct),
         subtitle = sprintf(
           paste(

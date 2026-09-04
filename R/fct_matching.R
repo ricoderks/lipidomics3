@@ -25,33 +25,6 @@ drop_empty_peaks <- function(x) {
 }
 
 
-#' Remove the precursor from a peak list
-#'
-#' Removes the peaks at and above the precursor m/z. Every reference spectrum
-#' of the lipid database contains its own precursor as a peak, and the
-#' candidates are selected on their precursor m/z, so that peak matches by
-#' construction. Leaving it in inflates all three scores, and the weighted dot
-#' product most of all, because the precursor is the fragment with the highest
-#' m/z and therefore gets the largest weight.
-#'
-#' @param x A `matrix` with the columns `mz` and `intensity`.
-#' @param precursor_mz Numeric(1), the precursor m/z of the spectrum.
-#' @param window Numeric(1), peaks within this distance below the precursor m/z
-#'   are removed as well, since a loss of less than about one dalton is not a
-#'   real fragment.
-#'
-#' @returns A `matrix` with the columns `mz` and `intensity`.
-#'
-#' @noRd
-drop_precursor_peaks <- function(x, precursor_mz, window = 1.5) {
-  if (nrow(x) == 0 || is.null(precursor_mz) || is.na(precursor_mz)) {
-    return(x)
-  }
-
-  x[x[, 1L] <= precursor_mz - window, , drop = FALSE]
-}
-
-
 #' Align the peaks of two spectra
 #'
 #' Matches the peaks of a query spectrum to the peaks of a reference spectrum.
@@ -223,10 +196,6 @@ reverse_dot_product <- function(aligned, m = 0, n = 1) {
 #'   dot product.
 #' @param n Numeric(1), the exponent of the intensity in the weight of the
 #'   weighted dot product.
-#' @param precursor_mz Numeric(1), the precursor m/z, or `NA` when the
-#'   precursor should not be removed. See [drop_precursor_peaks()].
-#' @param precursor_window Numeric(1), the window below the precursor m/z that
-#'   is removed together with the precursor.
 #'
 #' @returns A named numeric vector with the elements `dot`, `weighted_dot`,
 #'   `reverse_dot` and `n_matched`.
@@ -237,19 +206,9 @@ spectrum_scores <- function(query,
                             tolerance = 0.01,
                             ppm = 20,
                             m = 3,
-                            n = 0.6,
-                            precursor_mz = NA_real_,
-                            precursor_window = 1.5) {
-  query <- drop_precursor_peaks(
-    x = drop_empty_peaks(query),
-    precursor_mz = precursor_mz,
-    window = precursor_window
-  )
-  reference <- drop_precursor_peaks(
-    x = drop_empty_peaks(reference),
-    precursor_mz = precursor_mz,
-    window = precursor_window
-  )
+                            n = 0.6) {
+  query <- drop_empty_peaks(query)
+  reference <- drop_empty_peaks(reference)
 
   aligned <- align_peaks(x = query, y = reference, tolerance = tolerance, ppm = ppm)
 
@@ -283,10 +242,6 @@ spectrum_scores <- function(query,
 #' @param top_n Integer(1), the number of best hits to report.
 #' @param rank_by Character(1), the score to sort the hits by, one of `"dot"`,
 #'   `"weighted_dot"` or `"reverse_dot"`.
-#' @param precursor_mz Numeric(1), the precursor m/z, or `NA` when the
-#'   precursor should not be removed before scoring.
-#' @param precursor_window Numeric(1), the window below the precursor m/z that
-#'   is removed together with the precursor.
 #'
 #' @returns A `data.frame` with at most `top_n` rows, ordered from the best to
 #'   the worst hit.
@@ -300,9 +255,7 @@ match_spectrum <- function(query,
                            n = 0.6,
                            min_matched = 2,
                            top_n = 5,
-                           rank_by = "weighted_dot",
-                           precursor_mz = NA_real_,
-                           precursor_window = 1.5) {
+                           rank_by = "weighted_dot") {
   if (nrow(candidates) == 0 || nrow(query) == 0) {
     return(NULL)
   }
@@ -319,9 +272,7 @@ match_spectrum <- function(query,
         tolerance = tolerance,
         ppm = ppm,
         m = m,
-        n = n,
-        precursor_mz = precursor_mz,
-        precursor_window = precursor_window
+        n = n
       )
     },
     FUN.VALUE = numeric(4)
@@ -398,10 +349,6 @@ spectra_info_column <- function(spectra_info, column, i) {
 #'   reference spectrum must have in common.
 #' @param top_n Integer(1), the number of best hits per query spectrum.
 #' @param rank_by Character(1), the score to sort the hits by.
-#' @param remove_precursor Logical(1), whether the precursor should be removed
-#'   from both spectra before they are scored. See [drop_precursor_peaks()].
-#' @param precursor_window Numeric(1), the window below the precursor m/z that
-#'   is removed together with the precursor.
 #' @param progress A `function` that is called with the fraction of the work
 #'   that is done, or `NULL` when no progress should be reported.
 #'
@@ -420,8 +367,6 @@ match_ms2_spectra <- function(sps,
                               min_matched = 2,
                               top_n = 5,
                               rank_by = "weighted_dot",
-                              remove_precursor = TRUE,
-                              precursor_window = 1.5,
                               progress = NULL) {
   if (length(sps) == 0) {
     return(empty_match_table())
@@ -457,9 +402,7 @@ match_ms2_spectra <- function(sps,
       n = n,
       min_matched = min_matched,
       top_n = top_n,
-      rank_by = rank_by,
-      precursor_mz = if (isTRUE(remove_precursor)) precursor[i] else NA_real_,
-      precursor_window = precursor_window
+      rank_by = rank_by
     )
 
     if (is.null(hit)) {
@@ -544,10 +487,6 @@ empty_match_table <- function() {
 #'   reference spectrum.
 #' @param tolerance Numeric(1), absolute m/z tolerance for matching two peaks.
 #' @param ppm Numeric(1), relative m/z tolerance for matching two peaks.
-#' @param precursor_mz Numeric(1), the precursor m/z, or `NA` when the
-#'   precursor should be kept.
-#' @param precursor_window Numeric(1), the window below the precursor m/z that
-#'   is removed together with the precursor.
 #'
 #' @returns A `data.frame` with the columns `mz`, `intensity`, `spectrum` and
 #'   `matched`, with one row per peak of both spectra.
@@ -556,19 +495,9 @@ empty_match_table <- function() {
 mirror_spectrum_data <- function(query,
                                  reference,
                                  tolerance = 0.01,
-                                 ppm = 20,
-                                 precursor_mz = NA_real_,
-                                 precursor_window = 1.5) {
-  query <- drop_precursor_peaks(
-    x = drop_empty_peaks(query),
-    precursor_mz = precursor_mz,
-    window = precursor_window
-  )
-  reference <- drop_precursor_peaks(
-    x = drop_empty_peaks(reference),
-    precursor_mz = precursor_mz,
-    window = precursor_window
-  )
+                                 ppm = 20) {
+  query <- drop_empty_peaks(query)
+  reference <- drop_empty_peaks(reference)
 
   aligned <- align_peaks(x = query, y = reference, tolerance = tolerance, ppm = ppm)
 
@@ -618,11 +547,6 @@ mirror_spectrum_data <- function(query,
 #'   reference spectrum.
 #' @param tolerance Numeric(1), absolute m/z tolerance for matching two peaks.
 #' @param ppm Numeric(1), relative m/z tolerance for matching two peaks.
-#' @param precursor_mz Numeric(1), the precursor m/z, or `NA` when the
-#'   precursor should be kept. The plot removes the same peaks as the scores
-#'   did, so that the plot shows what was scored.
-#' @param precursor_window Numeric(1), the window below the precursor m/z that
-#'   is removed together with the precursor.
 #' @param title Character(1), the title of the plot.
 #' @param subtitle Character(1), the subtitle of the plot. Keeping the scores
 #'   out of the title stops a long lipid name from being clipped.
@@ -636,17 +560,13 @@ plot_mirror_spectrum <- function(query,
                                  reference,
                                  tolerance = 0.01,
                                  ppm = 20,
-                                 precursor_mz = NA_real_,
-                                 precursor_window = 1.5,
                                  title = "",
                                  subtitle = "") {
   plot_data <- mirror_spectrum_data(
     query = query,
     reference = reference,
     tolerance = tolerance,
-    ppm = ppm,
-    precursor_mz = precursor_mz,
-    precursor_window = precursor_window
+    ppm = ppm
   )
 
   plot_data$label <- ifelse(plot_data$matched, "matched", "not matched")
