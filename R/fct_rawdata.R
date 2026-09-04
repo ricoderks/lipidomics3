@@ -152,28 +152,115 @@ tic_data <- function(x, ms_level = 1L) {
 #'
 #' @importFrom MsExperiment sampleData
 #' @importFrom xcms chromatogram
-#' @importFrom Spectra rtime intensity
 #' @importFrom BiocParallel bpparam
 #' @noRd
 bpc_data <- function(x, ms_level = 1L, bpparam = BiocParallel::bpparam()) {
-  chroms <- xcms::chromatogram(
-    x,
-    aggregationFun = "max",
-    msLevel = as.integer(ms_level),
-    BPPARAM = bpparam
+  chromatograms_data(
+    chroms = xcms::chromatogram(
+      x,
+      aggregationFun = "max",
+      msLevel = as.integer(ms_level),
+      BPPARAM = bpparam
+    ),
+    sample_data = as.data.frame(MsExperiment::sampleData(x))
   )
-  sample_data <- as.data.frame(MsExperiment::sampleData(x))
+}
 
+
+#' Extracted ion chromatograms of the raw data
+#'
+#' Creates the extracted ion chromatogram of a single m/z of all samples, by
+#' summing the intensities of all peaks that fall within the m/z window of
+#' every spectrum. Like [bpc_data()] this reads all spectra of the requested MS
+#' level from disk, which is slow for large data sets.
+#'
+#' @param x An `MsExperiment` or `XcmsExperiment` object.
+#' @param mz Numeric(1), the m/z to extract.
+#' @param tolerance Numeric(1), the absolute half width of the m/z window.
+#' @param ppm Numeric(1), the relative half width of the m/z window.
+#' @param ms_level Integer(1), the MS level to show.
+#' @param bpparam A `BiocParallelParam` object describing how to parallelise.
+#'
+#' @returns A `data.frame` with the columns `rtime` (in minutes), `intensity`,
+#'   `sample_name` and `sample_group`.
+#'
+#' @importFrom MsExperiment sampleData
+#' @importFrom xcms chromatogram
+#' @importFrom BiocParallel bpparam
+#' @noRd
+eic_data <- function(x,
+                     mz,
+                     tolerance = 0.01,
+                     ppm = 0,
+                     ms_level = 1L,
+                     bpparam = BiocParallel::bpparam()) {
+  chromatograms_data(
+    chroms = xcms::chromatogram(
+      x,
+      mz = mz_window(mz = mz, tolerance = tolerance, ppm = ppm),
+      aggregationFun = "sum",
+      msLevel = as.integer(ms_level),
+      BPPARAM = bpparam
+    ),
+    sample_data = as.data.frame(MsExperiment::sampleData(x))
+  )
+}
+
+
+#' The m/z window around an m/z value
+#'
+#' Creates the m/z range that is extracted for an extracted ion chromatogram.
+#' The half width of the window is the sum of the absolute and the relative
+#' tolerance, so that both can be used together or on their own.
+#'
+#' @param mz Numeric(1), the m/z to extract.
+#' @param tolerance Numeric(1), the absolute half width of the m/z window.
+#' @param ppm Numeric(1), the relative half width of the m/z window.
+#'
+#' @returns A `matrix` with one row and the two columns of the m/z range, which
+#'   is the shape that [xcms::chromatogram()] expects.
+#'
+#' @noRd
+mz_window <- function(mz, tolerance = 0.01, ppm = 0) {
+  half_width <- tolerance + ppm * mz / 1e6
+
+  matrix(c(mz - half_width, mz + half_width), nrow = 1, ncol = 2)
+}
+
+
+#' Convert chromatograms into a data frame
+#'
+#' Puts the chromatograms of all samples below each other in a single
+#' `data.frame`, together with the name and the group of the sample they belong
+#' to.
+#'
+#' @param chroms An `MChromatograms` object with one row and one column per
+#'   sample, as returned by [xcms::chromatogram()].
+#' @param sample_data A `data.frame` with one row per sample, in the same order
+#'   as the columns of `chroms`.
+#'
+#' @returns A `data.frame` with the columns `rtime` (in minutes), `intensity`,
+#'   `sample_name` and `sample_group`.
+#'
+#' @importFrom Spectra rtime intensity
+#' @noRd
+chromatograms_data <- function(chroms, sample_data) {
   do.call(
     what = rbind,
     args = lapply(
       X = seq_len(ncol(chroms)),
       FUN = function(i) {
         chrom <- chroms[1, i]
+        intensity <- Spectra::intensity(chrom)
+
+        # A spectrum without a peak in the m/z window has no intensity, which
+        # is no signal and not a missing value, so the line is drawn through
+        # zero instead of being interrupted.
+        intensity[is.na(intensity)] <- 0
 
         data.frame(
           rtime = Spectra::rtime(chrom) / 60,
-          intensity = Spectra::intensity(chrom),
+          intensity = intensity,
           sample_name = sample_data$sample_name[i],
           sample_group = sample_data$sample_group[i],
           stringsAsFactors = FALSE
@@ -187,31 +274,73 @@ bpc_data <- function(x, ms_level = 1L, bpparam = BiocParallel::bpparam()) {
 #' Plot chromatograms
 #'
 #' Plots the chromatograms of all samples in a single panel, coloured by
-#' sample.
+#' sample. Clicking a sample in the legend hides its chromatogram, which makes
+#' it easier to compare a few samples of a large data set.
 #'
-#' @param chrom_data A `data.frame` as created by [tic_data()] or [bpc_data()].
+#' @param chrom_data A `data.frame` as created by [tic_data()], [bpc_data()] or
+#'   [eic_data()].
 #' @param y_label Character(1), the label of the y axis.
+#' @param title Character(1), the title of the plot.
 #'
-#' @returns A `ggplot` object.
+#' @returns A `plotly` object.
 #'
-#' @importFrom ggplot2 ggplot aes geom_line labs theme_bw theme element_text
-#' @importFrom rlang .data
+#' @importFrom plotly plot_ly add_lines layout config
+#' @importFrom htmltools htmlEscape
 #' @noRd
-plot_chromatograms <- function(chrom_data, y_label = "Intensity") {
-  ggplot2::ggplot(
-    data = chrom_data,
-    mapping = ggplot2::aes(
-      x = .data$rtime,
-      y = .data$intensity,
-      colour = .data$sample_name
+plot_chromatograms <- function(chrom_data, y_label = "Intensity", title = "") {
+  plot <- plotly::plot_ly()
+
+  # A trace without any point is not allowed, so an empty data set is shown as
+  # an empty pair of axes.
+  if (nrow(chrom_data) > 0) {
+    chrom_data$hover <- sprintf(
+      "%s (%s)<br>%.3f min<br>intensity %s",
+      chrom_data$sample_name,
+      chrom_data$sample_group,
+      chrom_data$rtime,
+      # `formatC()` formats every intensity on its own, so a chromatogram with
+      # a large peak does not push the small ones into scientific notation.
+      trimws(
+        formatC(
+          x = chrom_data$intensity,
+          format = "fg",
+          digits = 4,
+          big.mark = ",",
+          drop0trailing = TRUE
+        )
+      )
     )
-  ) +
-    ggplot2::geom_line(linewidth = 0.3) +
-    ggplot2::labs(
-      x = "Retention time [min]",
-      y = y_label,
-      colour = "Sample"
-    ) +
-    ggplot2::theme_bw() +
-    ggplot2::theme(legend.position = "bottom")
+
+    plot <- plotly::add_lines(
+      p = plot,
+      data = chrom_data,
+      x = ~rtime,
+      y = ~intensity,
+      color = ~sample_name,
+      line = list(width = 1.2),
+      hoverinfo = "text",
+      text = ~hover
+    )
+  }
+
+  plot <- plotly::layout(
+    p = plot,
+    title = list(
+      text = htmltools::htmlEscape(title),
+      x = 0,
+      xanchor = "left",
+      font = list(size = 14)
+    ),
+    xaxis = list(title = "Retention time [min]", zeroline = FALSE),
+    yaxis = list(title = y_label, zeroline = FALSE),
+    hovermode = "closest",
+    legend = list(orientation = "h", x = 0, y = -0.18, title = list(text = "")),
+    margin = list(t = 40)
+  )
+
+  plotly::config(
+    p = plot,
+    displaylogo = FALSE,
+    modeBarButtonsToRemove = list("select2d", "lasso2d", "autoScale2d")
+  )
 }

@@ -7,13 +7,14 @@
 #'
 #' @returns A `shiny.tag.list` with the user interface of the module.
 #'
-#' @importFrom shiny NS fileInput actionButton radioButtons helpText uiOutput
-#'   textOutput plotOutput
+#' @importFrom shiny NS fileInput actionButton radioButtons numericInput
+#'   conditionalPanel helpText uiOutput textOutput icon
 #' @importFrom bslib layout_sidebar sidebar card card_header card_body
 #'   layout_column_wrap value_box
 #' @importFrom bsicons bs_icon
 #' @importFrom htmltools tags
 #' @importFrom DT DTOutput
+#' @importFrom plotly plotlyOutput
 #' @noRd
 mod_rawdata_ui <- function(id) {
   ns <- shiny::NS(id)
@@ -46,13 +47,50 @@ mod_rawdata_ui <- function(id) {
         label = "Chromatogram",
         choices = c(
           "Total ion chromatogram" = "tic",
-          "Base peak chromatogram" = "bpc"
+          "Base peak chromatogram" = "bpc",
+          "Extracted ion chromatogram" = "eic"
         ),
         selected = "tic"
       ),
+      shiny::conditionalPanel(
+        condition = "input.chrom_type == 'eic'",
+        ns = ns,
+        shiny::numericInput(
+          inputId = ns("eic_mz"),
+          label = "m/z",
+          value = NULL,
+          min = 0,
+          step = 0.001
+        ),
+        shiny::numericInput(
+          inputId = ns("eic_tolerance"),
+          label = "m/z tolerance",
+          value = 0.01,
+          min = 0,
+          step = 0.001
+        ),
+        shiny::numericInput(
+          inputId = ns("eic_ppm"),
+          label = "m/z tolerance [ppm]",
+          value = 0,
+          min = 0,
+          step = 1
+        ),
+        shiny::actionButton(
+          inputId = ns("show_eic"),
+          label = "Show the chromatogram",
+          icon = shiny::icon("play"),
+          class = "btn-primary",
+          width = "100%"
+        )
+      ),
       shiny::helpText(
         "The total ion chromatogram is read from the file headers.",
-        "The base peak chromatogram reads all spectra and is slow."
+        "The base peak and the extracted ion chromatogram read all spectra",
+        "and are slow.",
+        "The width of the m/z window is the sum of both tolerances.",
+        "Zoom by dragging in the plot and hide a sample by clicking its name",
+        "in the legend."
       )
     ),
     bslib::layout_column_wrap(
@@ -88,7 +126,7 @@ mod_rawdata_ui <- function(id) {
       full_screen = TRUE,
       height = 440,
       bslib::card_header("Chromatograms"),
-      shiny::plotOutput(outputId = ns("chromatogram"), height = "100%")
+      plotly::plotlyOutput(outputId = ns("chromatogram"), height = "100%")
     )
   )
 }
@@ -106,11 +144,13 @@ mod_rawdata_ui <- function(id) {
 #'
 #' @returns Nothing, the module is called for its side effects.
 #'
-#' @importFrom shiny moduleServer reactive reactiveValues observeEvent req
-#'   renderText renderUI renderPlot showNotification withProgress incProgress
+#' @importFrom shiny moduleServer reactive reactiveValues observeEvent
+#'   eventReactive req validate need renderText renderUI showNotification
+#'   withProgress incProgress
 #' @importFrom htmltools tags
 #' @importFrom DT renderDT datatable
 #' @importFrom MsExperiment spectra
+#' @importFrom plotly renderPlotly
 #' @noRd
 mod_rawdata_server <- function(id, r) {
   shiny::moduleServer(id, function(input, output, session) {
@@ -285,8 +325,68 @@ mod_rawdata_server <- function(id, r) {
       )
     })
 
-    output$chromatogram <- shiny::renderPlot({
+    # Reading the spectra of an extracted ion chromatogram is slow, so the
+    # settings are only picked up when the button is clicked and not while the
+    # m/z is being typed.
+    eic_settings <- shiny::eventReactive(
+      eventExpr = input$show_eic,
+      valueExpr = list(
+        mz = input$eic_mz,
+        tolerance = input$eic_tolerance,
+        ppm = input$eic_ppm
+      ),
+      ignoreNULL = FALSE
+    )
+
+    output$chromatogram <- plotly::renderPlotly({
       shiny::req(r$ms_data)
+
+      if (identical(input$chrom_type, "eic")) {
+        settings <- eic_settings()
+        window <- mz_window(
+          mz = settings$mz,
+          tolerance = settings$tolerance,
+          ppm = settings$ppm
+        )
+
+        # Two calls, so that only the first thing that is missing is asked
+        # for and not both at the same time.
+        shiny::validate(
+          shiny::need(
+            expr = isTRUE(settings$mz > 0),
+            message = paste(
+              "Fill in the m/z to extract and click",
+              "'Show the chromatogram'."
+            )
+          )
+        )
+        shiny::validate(
+          shiny::need(
+            expr = isTRUE(window[2L] > window[1L]),
+            message = "Fill in an m/z tolerance larger than zero."
+          )
+        )
+
+        chrom_data <- shiny::withProgress(
+          message = "Reading all spectra for the extracted ion chromatogram",
+          value = 0.5,
+          expr = eic_data(
+            x = r$ms_data,
+            mz = settings$mz,
+            tolerance = settings$tolerance,
+            ppm = settings$ppm,
+            ms_level = 1L
+          )
+        )
+
+        return(
+          plot_chromatograms(
+            chrom_data = chrom_data,
+            y_label = "Intensity",
+            title = sprintf("m/z %.4f - %.4f", window[1L], window[2L])
+          )
+        )
+      }
 
       if (identical(input$chrom_type, "bpc")) {
         chrom_data <- shiny::withProgress(
