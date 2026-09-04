@@ -26,6 +26,15 @@ app_server <- function(input, output, session) {
   mod_ms2_server(id = "ms2_1", r = r)
   mod_identification_server(id = "identification_1", r = r)
 
+  # Nothing of the workflow is written to disk, so the browser is asked to
+  # warn the user before the page is left once there is a result to lose.
+  shiny::observe({
+    session$sendCustomMessage(
+      type = "lipidomics3-unsaved-work",
+      message = list(unsaved = has_unsaved_work(r))
+    )
+  })
+
   # The uploaded files can be large, so they are removed when the user leaves.
   upload_dir <- file.path(tempdir(), "lipidomics3", session$token)
 
