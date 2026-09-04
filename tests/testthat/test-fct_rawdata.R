@@ -3,9 +3,15 @@ test_that("build_sample_data() keeps the order of the raw data files", {
     sample_name = c("s1", "s2"),
     file_name = c("a.mzML", "b.mzML"),
     sample_group = c("QC", "blank"),
+    sample_type = c("qc", "blank"),
     stringsAsFactors = FALSE
   )
-  map <- list(sample = "sample_name", file = "file_name", group = "sample_group")
+  map <- list(
+    sample = "sample_name",
+    file = "file_name",
+    group = "sample_group",
+    type = "sample_type"
+  )
   file_info <- data.frame(
     name = c("b.mzML", "a.mzML"),
     path = c("/tmp/b.mzML", "/tmp/a.mzML"),
@@ -17,6 +23,7 @@ test_that("build_sample_data() keeps the order of the raw data files", {
 
   expect_equal(sample_data$sample_name, c("s2", "s1"))
   expect_equal(sample_data$sample_group, c("blank", "QC"))
+  expect_equal(sample_data$sample_type, c("blank", "qc"))
   expect_equal(sample_data$file_name, c("b.mzML", "a.mzML"))
 })
 
@@ -26,7 +33,12 @@ test_that("build_sample_data() falls back to the file name", {
     file_name = "a.mzML",
     stringsAsFactors = FALSE
   )
-  map <- list(sample = "sample_name", file = "file_name", group = NA_character_)
+  map <- list(
+    sample = "sample_name",
+    file = "file_name",
+    group = NA_character_,
+    type = NA_character_
+  )
   file_info <- data.frame(
     name = c("a.mzML", "unknown.mzML"),
     path = c("/tmp/a.mzML", "/tmp/unknown.mzML"),
@@ -38,6 +50,32 @@ test_that("build_sample_data() falls back to the file name", {
 
   expect_equal(sample_data$sample_name, c("s1", "unknown"))
   expect_equal(sample_data$sample_group, c("all", "all"))
+  expect_equal(sample_data$sample_type, c("sample", "sample"))
+})
+
+test_that("build_sample_data() names a missing sample type", {
+  meta_data <- data.frame(
+    sample_name = c("s1", "s2"),
+    file_name = c("a.mzML", "b.mzML"),
+    type = c("qc", NA_character_),
+    stringsAsFactors = FALSE
+  )
+  map <- list(
+    sample = "sample_name",
+    file = "file_name",
+    group = NA_character_,
+    type = "type"
+  )
+  file_info <- data.frame(
+    name = c("a.mzML", "b.mzML"),
+    path = c("/tmp/a.mzML", "/tmp/b.mzML"),
+    meta_row = c(1L, 2L),
+    stringsAsFactors = FALSE
+  )
+
+  sample_data <- build_sample_data(file_info, meta_data, map)
+
+  expect_equal(sample_data$sample_type, c("qc", "unknown"))
 })
 
 test_that("mz_window() adds both tolerances", {

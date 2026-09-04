@@ -2,7 +2,7 @@
 #'
 #' The user interface of the module that reads the sample meta data and lets
 #' the user point out which columns hold the sample name, the raw data file
-#' name and the sample group.
+#' name, the sample group and the sample type.
 #'
 #' @param id Character(1), internal parameter for `{shiny}`.
 #'
@@ -50,10 +50,16 @@ mod_metadata_ui <- function(id) {
         label = "Sample group column",
         choices = c("None" = ""),
         width = "100%"
+      ),
+      shiny::selectInput(
+        inputId = ns("type_column"),
+        label = "Sample type column",
+        choices = c("None" = ""),
+        width = "100%"
       )
     ),
     bslib::layout_column_wrap(
-      width = 1 / 3,
+      width = 1 / 4,
       fill = FALSE,
       bslib::value_box(
         title = "Samples",
@@ -65,6 +71,12 @@ mod_metadata_ui <- function(id) {
         title = "Sample groups",
         value = shiny::textOutput(outputId = ns("n_groups")),
         showcase = bsicons::bs_icon("diagram-3"),
+        theme = "primary"
+      ),
+      bslib::value_box(
+        title = "Sample types",
+        value = shiny::textOutput(outputId = ns("n_types")),
+        showcase = bsicons::bs_icon("tags"),
         theme = "primary"
       ),
       bslib::value_box(
@@ -183,6 +195,15 @@ mod_metadata_server <- function(id, r) {
           patterns = c("^sample.?group$", "^group$", "^class$", "^type$", "group")
         )
       )
+      shiny::updateSelectInput(
+        session = session,
+        inputId = "type_column",
+        choices = c("None" = "", columns),
+        selected = guess_metadata_column(
+          column_names = columns,
+          patterns = c("^sample.?type$", "^type$", "^sample.?kind$", "type")
+        )
+      )
     })
 
     # Only meta data that passes the checks is shared with the other modules.
@@ -218,6 +239,11 @@ mod_metadata_server <- function(id, r) {
           input$group_column
         } else {
           NA_character_
+        },
+        type = if (isTRUE(nzchar(input$type_column))) {
+          input$type_column
+        } else {
+          NA_character_
         }
       )
     })
@@ -234,6 +260,16 @@ mod_metadata_server <- function(id, r) {
       }
 
       length(unique(r$metadata[[map$group]]))
+    })
+
+    output$n_types <- shiny::renderText({
+      map <- r$metadata_map
+
+      if (is.null(map) || is.na(map$type)) {
+        return("-")
+      }
+
+      length(unique(r$metadata[[map$type]]))
     })
 
     output$status <- shiny::renderText({

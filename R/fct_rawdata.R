@@ -8,12 +8,12 @@
 #' @param file_info A `data.frame` with the columns `name`, `path` and
 #'   `meta_row`, as created by [link_metadata_files()].
 #' @param meta_data A `data.frame` with the sample meta data.
-#' @param map A named `list` with the elements `sample`, `file` and `group`,
-#'   holding the names of the meta data columns.
+#' @param map A named `list` with the elements `sample`, `file`, `group` and
+#'   `type`, holding the names of the meta data columns.
 #'
 #' @returns A `data.frame` with one row per raw data file, with at least the
-#'   columns `sample_name`, `sample_group` and `file_name`, followed by all
-#'   columns of the meta data.
+#'   columns `sample_name`, `sample_group`, `sample_type` and `file_name`,
+#'   followed by all columns of the meta data.
 #'
 #' @importFrom tools file_path_sans_ext
 #' @noRd
@@ -33,10 +33,20 @@ build_sample_data <- function(file_info, meta_data, map) {
   }
   sample_group[is.na(sample_group)] <- "unknown"
 
+  # Without a sample type column every file is an ordinary sample, so that the
+  # steps further down the workflow can always count on the column.
+  sample_type <- if (is.null(map$type) || is.na(map$type)) {
+    rep("sample", nrow(file_info))
+  } else {
+    as.character(matched[[map$type]])
+  }
+  sample_type[is.na(sample_type)] <- "unknown"
+
   cbind(
     data.frame(
       sample_name = sample_name,
       sample_group = sample_group,
+      sample_type = sample_type,
       file_name = file_info$name,
       stringsAsFactors = FALSE
     ),
@@ -94,6 +104,7 @@ ms_experiment_summary <- function(x) {
   data.frame(
     sample_name = sample_data$sample_name,
     sample_group = sample_data$sample_group,
+    sample_type = sample_data$sample_type,
     file_name = sample_data$file_name,
     ms1_spectra = as.integer(tapply(level, origin, function(y) sum(y == 1L))),
     ms2_spectra = as.integer(tapply(level, origin, function(y) sum(y == 2L))),
